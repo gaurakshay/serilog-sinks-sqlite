@@ -16,7 +16,7 @@ using System;
 using System.Collections.Generic;
 using System.Dynamic;
 using System.Linq;
-using Newtonsoft.Json;
+using System.Text.Json;
 using Serilog.Events;
 
 namespace Serilog.Sinks.Extensions
@@ -25,7 +25,7 @@ namespace Serilog.Sinks.Extensions
     {
         internal static string Json(this LogEvent logEvent, bool storeTimestampInUtc = false)
         {
-            return JsonConvert.SerializeObject(ConvertToDictionary(logEvent, storeTimestampInUtc));
+            return JsonSerializer.Serialize(ConvertToDictionary(logEvent, storeTimestampInUtc));
         }
 
         internal static IDictionary<string, object> Dictionary(
@@ -38,7 +38,7 @@ namespace Serilog.Sinks.Extensions
 
         internal static string Json(this IReadOnlyDictionary<string, LogEventPropertyValue> properties)
         {
-            return JsonConvert.SerializeObject(ConvertToDictionary(properties));
+            return JsonSerializer.Serialize(ConvertToDictionary(properties));
         }
 
         internal static IDictionary<string, object> Dictionary(
@@ -98,7 +98,7 @@ namespace Serilog.Sinks.Extensions
             if (data is SequenceValue seq)
                 return seq.Elements.Select(Simplify).ToArray();
 
-            if (!(data is StructureValue str))
+            if (data is not StructureValue str)
                 return null;
 
             {

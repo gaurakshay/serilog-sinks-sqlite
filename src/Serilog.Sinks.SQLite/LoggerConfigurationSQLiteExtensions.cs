@@ -50,15 +50,13 @@ namespace Serilog
         public static LoggerConfiguration SQLite(
             this LoggerSinkConfiguration loggerConfiguration,
             string sqliteDbPath,
+            string password,
             string tableName = "Logs",
             LogEventLevel restrictedToMinimumLevel = LevelAlias.Minimum,
             IFormatProvider formatProvider = null,
             bool storeTimestampInUtc = false,
-            TimeSpan? retentionPeriod = null,
-            TimeSpan? retentionCheckInterval = null,
             LoggingLevelSwitch levelSwitch = null,
             uint batchSize = 100,
-            uint maxDatabaseSize = 10,
             bool rollOver = true)
         {
             if (loggerConfiguration == null) {
@@ -85,17 +83,15 @@ namespace Serilog
             try {
                 var sqliteDbFile = new FileInfo(sqliteDbPath);
                 sqliteDbFile.Directory?.Create();
-
+                
                 return loggerConfiguration.Sink(
                     new SQLiteSink(
                         sqliteDbFile.FullName,
                         tableName,
                         formatProvider,
                         storeTimestampInUtc,
-                        retentionPeriod,
-                        retentionCheckInterval,
+                        password,
                         batchSize,
-                        maxDatabaseSize,
                         rollOver),
                     restrictedToMinimumLevel,
                     levelSwitch);
