@@ -70,11 +70,11 @@ namespace Serilog.Sinks.SQLite
 
         private void InitializeDatabase()
         {
-            using var conn = GetSqLiteConnection();
+            using var conn = GetSqliteConnection();
             CreateSqlTable(conn);
         }
 
-        private SqliteConnection GetSqLiteConnection()
+        private SqliteConnection GetSqliteConnection()
         {
             var sqlConString = new SqliteConnectionStringBuilder
             {
@@ -88,10 +88,19 @@ namespace Serilog.Sinks.SQLite
                 //MaxPageCount = (int)(_maxDatabaseSize * BytesPerMb / MaxSupportedPageSize)
             }.ConnectionString;
 
-            var sqLiteConnection = new SqliteConnection(sqlConString);
-            sqLiteConnection.Open();
+            var sqliteConnection = new SqliteConnection(sqlConString);
+            sqliteConnection.Open();
 
-            return sqLiteConnection;
+            // https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/async
+            // enable write ahead logging
+            var walCommand = sqliteConnection.CreateCommand();
+            walCommand.CommandText =
+            @"
+                PRAGMA journal_mode = 'wal'
+            ";
+            walCommand.ExecuteNonQuery();
+
+            return sqliteConnection;
         }
 
         private void CreateSqlTable(SqliteConnection sqlConnection)
@@ -167,7 +176,7 @@ namespace Serilog.Sinks.SQLite
             await _semaphoreSlim.WaitAsync().ConfigureAwait(false);
             try
             {
-                using var sqlConnection = GetSqLiteConnection();
+                using var sqlConnection = GetSqliteConnection();
                 try
                 {
                     await WriteToDatabaseAsync(logEventsBatch, sqlConnection).ConfigureAwait(false);
