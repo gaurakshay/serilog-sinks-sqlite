@@ -81,24 +81,11 @@ namespace Serilog.Sinks.SQLite
                 DataSource = _databasePath,
                 Password = _password,
                 Mode = SqliteOpenMode.ReadWriteCreate
-                //JournalMode = SQLiteJournalModeEnum.Memory,
-                //SyncMode = SynchronizationModes.Normal,
-                //CacheSize = 500,
-                //PageSize = (int)MaxSupportedPageSize,
-                //MaxPageCount = (int)(_maxDatabaseSize * BytesPerMb / MaxSupportedPageSize)
-            }.ConnectionString;
+            }
+            .ConnectionString;
 
             var sqliteConnection = new SqliteConnection(sqlConString);
             sqliteConnection.Open();
-
-            // https://learn.microsoft.com/en-us/dotnet/standard/data/sqlite/async
-            // enable write ahead logging
-            var walCommand = sqliteConnection.CreateCommand();
-            walCommand.CommandText =
-            @"
-                PRAGMA journal_mode = 'wal'
-            ";
-            walCommand.ExecuteNonQuery();
 
             return sqliteConnection;
         }
@@ -109,7 +96,7 @@ namespace Serilog.Sinks.SQLite
             colDefs += "Timestamp TEXT,";
             colDefs += "Level VARCHAR(10),";
             colDefs += "Exception TEXT,";
-            colDefs += "Message TEXT,";
+            colDefs += "MessageTemplate TEXT,";
             colDefs += "RenderedMessage TEXT,";
             colDefs += "Properties TEXT";
 
@@ -121,8 +108,8 @@ namespace Serilog.Sinks.SQLite
 
         private SqliteCommand CreateSqlInsertCommand(SqliteConnection connection)
         {
-            var sqlInsertText = "INSERT INTO {0} (Timestamp, Level, Exception, Message, RenderedMessage, Properties)";
-            sqlInsertText += " VALUES (@timeStamp, @level, @exception, @message, @renderedMessage, @properties)";
+            var sqlInsertText = "INSERT INTO {0} (Timestamp, Level, Exception, MessageTemplate, RenderedMessage, Properties)";
+            sqlInsertText += " VALUES (@timeStamp, @level, @exception, @messageTemplate, @renderedMessage, @properties)";
             sqlInsertText = string.Format(sqlInsertText, _tableName);
 
             var sqlCommand = connection.CreateCommand();
@@ -132,7 +119,7 @@ namespace Serilog.Sinks.SQLite
             sqlCommand.Parameters.Add(new SqliteParameter("@timeStamp", DbType.DateTime2));
             sqlCommand.Parameters.Add(new SqliteParameter("@level", DbType.String));
             sqlCommand.Parameters.Add(new SqliteParameter("@exception", DbType.String));
-            sqlCommand.Parameters.Add(new SqliteParameter("@message", DbType.String));
+            sqlCommand.Parameters.Add(new SqliteParameter("@messageTemplate", DbType.String));
             sqlCommand.Parameters.Add(new SqliteParameter("@renderedMessage", DbType.String));
             sqlCommand.Parameters.Add(new SqliteParameter("@properties", DbType.String));
 
@@ -172,14 +159,17 @@ namespace Serilog.Sinks.SQLite
         protected override async Task<bool> WriteLogEventAsync(ICollection<LogEvent> logEventsBatch)
         {
             if ((logEventsBatch == null) || (logEventsBatch.Count == 0))
+            {
                 return true;
+            }
+
             await _semaphoreSlim.WaitAsync().ConfigureAwait(false);
             try
             {
                 using var sqlConnection = GetSqliteConnection();
                 try
                 {
-                    await WriteToDatabaseAsync(logEventsBatch, sqlConnection).ConfigureAwait(false);
+                    WriteToDatabase(logEventsBatch, sqlConnection);
                     return true;
                 }
                 catch (SqliteException e)
@@ -187,7 +177,9 @@ namespace Serilog.Sinks.SQLite
                     SelfLog.WriteLine(e.Message);
 
                     if (e.SqliteErrorCode != 3) // https://www.sqlite.org/rescode.html#full
+                    {
                         return false;
+                    }
 
                     if (_rollOver == false)
                     {
@@ -204,7 +196,7 @@ namespace Serilog.Sinks.SQLite
                     File.Copy(_databasePath, newFilePath, true);
 
                     TruncateLog(sqlConnection);
-                    await WriteToDatabaseAsync(logEventsBatch, sqlConnection).ConfigureAwait(false);
+                    WriteToDatabase(logEventsBatch, sqlConnection);
 
                     SelfLog.WriteLine($"Rolling database to {newFilePath}");
                     return true;
@@ -221,7 +213,7 @@ namespace Serilog.Sinks.SQLite
             }
         }
 
-        private async Task WriteToDatabaseAsync(ICollection<LogEvent> logEventsBatch, SqliteConnection sqlConnection)
+        private void WriteToDatabase(ICollection<LogEvent> logEventsBatch, SqliteConnection sqlConnection)
         {
             using var tr = sqlConnection.BeginTransaction();
             using var sqlCommand = CreateSqlInsertCommand(sqlConnection);
@@ -235,13 +227,13 @@ namespace Serilog.Sinks.SQLite
                 sqlCommand.Parameters["@level"].Value = logEvent.Level.ToString();
                 sqlCommand.Parameters["@exception"].Value =
                     logEvent.Exception?.ToString() ?? string.Empty;
-                sqlCommand.Parameters["@message"].Value = logEvent.RenderMessage(_formatProvider);
-                sqlCommand.Parameters["@renderedMessage"].Value = logEvent.MessageTemplate.Render(logEvent.Properties, _formatProvider);
+                sqlCommand.Parameters["@messageTemplate"].Value = logEvent.MessageTemplate.Text;
+                sqlCommand.Parameters["@renderedMessage"].Value = logEvent.RenderMessage(_formatProvider);
                 sqlCommand.Parameters["@properties"].Value = logEvent.Properties.Count > 0
                     ? logEvent.Properties.Json()
                     : string.Empty;
 
-                await sqlCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
+                sqlCommand.ExecuteNonQuery();
             }
             tr.Commit();
         }
