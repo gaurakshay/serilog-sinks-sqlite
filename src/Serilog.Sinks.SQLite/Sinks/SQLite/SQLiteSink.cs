@@ -99,6 +99,9 @@ namespace Serilog.Sinks.SQLite
             colDefs += "MessageTemplate TEXT,";
             colDefs += "RenderedMessage TEXT,";
             colDefs += "Properties TEXT";
+            colDefs += "ClassName TEXT";
+            colDefs += "MethodName TEXT";
+            colDefs += "LineNumber TEXT";
 
             var sqlCreateText = $"CREATE TABLE IF NOT EXISTS {_tableName} ({colDefs})";
 
@@ -108,8 +111,8 @@ namespace Serilog.Sinks.SQLite
 
         private SqliteCommand CreateSqlInsertCommand(SqliteConnection connection)
         {
-            var sqlInsertText = "INSERT INTO {0} (Timestamp, Level, Exception, MessageTemplate, RenderedMessage, Properties)";
-            sqlInsertText += " VALUES (@timeStamp, @level, @exception, @messageTemplate, @renderedMessage, @properties)";
+            var sqlInsertText = "INSERT INTO {0} (Timestamp, Level, Exception, MessageTemplate, RenderedMessage, Properties, ClassName, MethodName, LineNumber)";
+            sqlInsertText += " VALUES (@timeStamp, @level, @exception, @messageTemplate, @renderedMessage, @properties, @className, @methodName, @lineNumber)";
             sqlInsertText = string.Format(sqlInsertText, _tableName);
 
             var sqlCommand = connection.CreateCommand();
@@ -122,6 +125,9 @@ namespace Serilog.Sinks.SQLite
             sqlCommand.Parameters.Add(new SqliteParameter("@messageTemplate", DbType.String));
             sqlCommand.Parameters.Add(new SqliteParameter("@renderedMessage", DbType.String));
             sqlCommand.Parameters.Add(new SqliteParameter("@properties", DbType.String));
+            sqlCommand.Parameters.Add(new SqliteParameter("@className", DbType.String));
+            sqlCommand.Parameters.Add(new SqliteParameter("@methodName", DbType.String));
+            sqlCommand.Parameters.Add(new SqliteParameter("@lineNumber", DbType.String));
 
             return sqlCommand;
         }
@@ -231,6 +237,15 @@ namespace Serilog.Sinks.SQLite
                 sqlCommand.Parameters["@renderedMessage"].Value = logEvent.RenderMessage(_formatProvider);
                 sqlCommand.Parameters["@properties"].Value = logEvent.Properties.Count > 0
                     ? logEvent.Properties.Json()
+                    : string.Empty;
+                sqlCommand.Parameters["@className"].Value = logEvent.Properties.ContainsKey("ClassName")
+                    ? logEvent.Properties["ClassName"]
+                    : string.Empty;
+                sqlCommand.Parameters["@methodName"].Value = logEvent.Properties.ContainsKey("MethodName")
+                    ? logEvent.Properties["MethodName"]
+                    : string.Empty;
+                sqlCommand.Parameters["@lineNumber"].Value = logEvent.Properties.ContainsKey("LineNumber")
+                    ? logEvent.Properties["LineNumber"]
                     : string.Empty;
 
                 sqlCommand.ExecuteNonQuery();
